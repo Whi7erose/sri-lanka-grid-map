@@ -1,0 +1,12 @@
+{
+  "name": "sri-lanka-grid-map",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "update": "node scripts/fetch_pucsl.mjs",
+    "test": "node scripts/test_logic.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.47.2"
+  }
+}

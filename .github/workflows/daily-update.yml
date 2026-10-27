@@ -1,0 +1,66 @@
+name: Daily PUCSL data update
+
+on:
+  schedule:
+    - cron: '7 7 * * *'      # every day at 07:07 UTC = 12:37 Colombo time
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
+    inputs:
+      from:
+        description: 'Optional start date (YYYY-MM-DD) to re-fetch'
+        required: false
+      to:
+        description: 'Optional end date (YYYY-MM-DD)'
+        required: false
+
+permissions:
+  contents: write             # to commit the updated data files
+  issues: write               # to open an issue when a possible blackout is detected
+
+concurrency:
+  group: pucsl-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Check the merge logic
+        run: npm test
+
+      - name: Fetch new days from PUCSL
+        id: fetch
+        env:
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+        run: node scripts/fetch_pucsl.mjs
+
+      - name: Commit updated data
+        run: |
+          if git diff --quiet -- data; then echo "No changes"; exit 0; fi
+          git config user.name  "grid-map-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git commit -m "Data: PUCSL update $(TZ=Asia/Colombo date +%F)"
+          git push
+
+      - name: Open an issue for a possible blackout
+        if: steps.fetch.outputs.dips != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Possible blackout on ${{ steps.fetch.outputs.dips }}" \
+            --body "The daily update found total generation well below normal with coal output collapsing on: ${{ steps.fetch.outputs.dips }}. Check the news and, if confirmed, add a story to the BO list in index.html. Details are in data/alerts.json."
