@@ -15,15 +15,19 @@ on:
 permissions:
   contents: write             # to commit the updated data files
   issues: write               # to open an issue when a possible blackout is detected
+  pages: write                # to deploy to GitHub Pages
+  id-token: write             # to verify deployment tokens
 
 concurrency:
-  group: pucsl-update
+  group: pages
   cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      committed: ${{ steps.commit.outputs.committed }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,13 +52,19 @@ jobs:
         run: node scripts/fetch_pucsl.mjs
 
       - name: Commit updated data
+        id: commit
         run: |
-          if git diff --quiet -- data; then echo "No changes"; exit 0; fi
+          if git diff --quiet -- data; then
+            echo "committed=0" >> $GITHUB_OUTPUT
+            echo "No changes in data"
+            exit 0
+          fi
           git config user.name  "grid-map-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data
           git commit -m "Data: PUCSL update $(TZ=Asia/Colombo date +%F)"
           git push
+          echo "committed=1" >> $GITHUB_OUTPUT
 
       - name: Open an issue for a possible blackout
         if: steps.fetch.outputs.dips != ''
@@ -64,3 +74,28 @@ jobs:
           gh issue create \
             --title "Possible blackout on ${{ steps.fetch.outputs.dips }}" \
             --body "The daily update found total generation well below normal with coal output collapsing on: ${{ steps.fetch.outputs.dips }}. Check the news and, if confirmed, add a story to the BO list in index.html. Details are in data/alerts.json."
+
+  deploy:
+    needs: update
+    if: always() && needs.update.result == 'success'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
