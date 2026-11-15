@@ -12,6 +12,9 @@ assert.deepEqual(days['2026-10-27'], [15.9, 2.3, 1021.5, 4.9, 1.2, 1.1, 9.8, 0.4
 assert.equal(days['2026-10-28'], null);
 // 2. merge into a copy: Oct 2026 had 26 days; day 27 appended, 28 stored as zeros (no data)
 const c = JSON.parse(JSON.stringify(d));
+if (c.daily['2026-10']) c.daily['2026-10'] = c.daily['2026-10'].split('|').slice(0, 26).join('|');
+for (const m of Object.keys(c.daily)) if (m > '2026-10') delete c.daily[m];
+c.months = c.months.filter(r => r[0] <= '2026-10');
 const w = mergeDays(c, days);
 assert.deepEqual(w, ['2026-10-27','2026-10-28']);
 const oct = c.daily['2026-10'].split('|');
